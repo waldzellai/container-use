@@ -126,20 +126,21 @@ func (s *Container) FileList(ctx context.Context, path string) (string, error) {
 	return out.String(), nil
 }
 
-func (s *Container) Upload(ctx context.Context, source string, target string) error {
-	var sourceDir *dagger.Directory
+func urlToDirectory(url string) *dagger.Directory {
 	switch {
-	case strings.HasPrefix(source, "file://"):
-		sourceDir = dag.Host().Directory(source[len("file://"):])
-	case strings.HasPrefix(source, "git://"):
-		sourceDir = dag.Git(source[len("git://"):]).Head().Tree()
-	case strings.HasPrefix(source, "https://"):
-		sourceDir = dag.Git(source[len("https://"):]).Head().Tree()
+	case strings.HasPrefix(url, "file://"):
+		return dag.Host().Directory(url[len("file://"):])
+	case strings.HasPrefix(url, "git://"):
+		return dag.Git(url[len("git://"):]).Head().Tree()
+	case strings.HasPrefix(url, "https://"):
+		return dag.Git(url[len("https://"):]).Head().Tree()
 	default:
-		return errors.New("source must be a file:// or git:// path")
+		return dag.Host().Directory(url)
 	}
+}
 
-	return s.apply(ctx, s.state.WithDirectory(target, sourceDir))
+func (s *Container) Upload(ctx context.Context, source string, target string) error {
+	return s.apply(ctx, s.state.WithDirectory(target, urlToDirectory(source)))
 }
 
 func (s *Container) Download(ctx context.Context, source string, target string) error {
@@ -157,18 +158,7 @@ func (s *Container) Download(ctx context.Context, source string, target string) 
 }
 
 func (s *Container) Diff(ctx context.Context, source string, target string) (string, error) {
-	var sourceDir *dagger.Directory
-	switch {
-	case strings.HasPrefix(source, "file://"):
-		sourceDir = dag.Host().Directory(source[len("file://"):])
-	case strings.HasPrefix(source, "git://"):
-		sourceDir = dag.Git(source[len("git://"):]).Head().Tree()
-	case strings.HasPrefix(source, "https://"):
-		sourceDir = dag.Git(source[len("https://"):]).Head().Tree()
-	default:
-		return "", errors.New("source must be a file:// or git:// path")
-	}
-
+	sourceDir := urlToDirectory(source)
 	targetDir := s.state.Directory(target)
 
 	diff, err := dag.Container().From("alpine").
