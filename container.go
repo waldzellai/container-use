@@ -155,3 +155,35 @@ func (s *Container) Download(ctx context.Context, source string, target string) 
 
 	return nil
 }
+
+func (s *Container) Diff(ctx context.Context, source string, target string) (string, error) {
+	var sourceDir *dagger.Directory
+	switch {
+	case strings.HasPrefix(source, "file://"):
+		sourceDir = dag.Host().Directory(source[len("file://"):])
+	case strings.HasPrefix(source, "git://"):
+		sourceDir = dag.Git(source[len("git://"):]).Head().Tree()
+	case strings.HasPrefix(source, "https://"):
+		sourceDir = dag.Git(source[len("https://"):]).Head().Tree()
+	default:
+		return "", errors.New("source must be a file:// or git:// path")
+	}
+
+	targetDir := s.state.Directory(target)
+
+	diff, err := dag.Container().From("alpine").
+		WithMountedDirectory("/source", sourceDir).
+		WithMountedDirectory("/target", targetDir).
+		WithExec([]string{"diff", "-burN", "/source", "/target"}, dagger.ContainerWithExecOpts{
+			Expect: dagger.ReturnTypeAny,
+		}).
+		Stdout(ctx)
+	if err != nil {
+		var exitErr *dagger.ExecError
+		if errors.As(err, &exitErr) {
+			return fmt.Sprintf("command failed with exit code %d.\nstdout: %s\nstderr: %s", exitErr.ExitCode, exitErr.Stdout, exitErr.Stderr), nil
+		}
+		return "", err
+	}
+	return diff, nil
+}

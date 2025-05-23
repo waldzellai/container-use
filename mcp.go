@@ -30,6 +30,7 @@ func init() {
 
 		ContainerUploadTool,
 		ContainerDownloadTool,
+		ContainerDiffTool,
 
 		ContainerFileReadTool,
 		ContainerFileListTool,
@@ -210,6 +211,53 @@ var ContainerDownloadTool = &Tool{
 		}
 
 		return mcp.NewToolResultText(fmt.Sprintf("files downloaded successfully to %s", target)), nil
+	},
+}
+
+var ContainerDiffTool = &Tool{
+	Definition: mcp.NewTool("container_diff",
+		mcp.WithDescription("Diff files between a container and the local filesystem."),
+		mcp.WithString("explanation",
+			mcp.Description("One sentence explanation for why this diff is being run."),
+		),
+		mcp.WithString("container_id",
+			mcp.Description("The ID of the container for this command. Must call `container_create` first."),
+			mcp.Required(),
+		),
+		mcp.WithString("source",
+			mcp.Description("The source directory to be compared. This can be a local folder (e.g. file://) or a URL to a git repository (e.g. https://github.com/user/repo.git, git@github.com:user/repo.git)"),
+			mcp.Required(),
+		),
+		mcp.WithString("target",
+			mcp.Description("The target destination on the container filesystem where to compare against."),
+			mcp.Required(),
+		),
+	),
+	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		containerID, ok := request.GetArguments()["container_id"].(string)
+		if !ok {
+			return nil, errors.New("container_id must be a string")
+		}
+		container := GetContainer(containerID)
+		if container == nil {
+			return nil, errors.New("container not found")
+		}
+
+		source, ok := request.GetArguments()["source"].(string)
+		if !ok {
+			return nil, errors.New("source must be a string")
+		}
+		target, ok := request.GetArguments()["target"].(string)
+		if !ok {
+			return nil, errors.New("target must be a string")
+		}
+
+		diff, err := container.Diff(ctx, source, target)
+		if err != nil {
+			return nil, err
+		}
+
+		return mcp.NewToolResultText(diff), nil
 	},
 }
 
