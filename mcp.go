@@ -32,9 +32,9 @@ func init() {
 		ContainerDownloadTool,
 
 		ContainerFileReadTool,
+		ContainerFileListTool,
 		ContainerFileWriteTool,
 		ContainerFileDeleteTool,
-		ContainerFileListTool,
 	)
 }
 
@@ -57,6 +57,67 @@ var ContainerCreateTool = &Tool{
 		}
 		sandbox := CreateContainer(image)
 		return mcp.NewToolResultText(fmt.Sprintf(`{"id": %q}`, sandbox.ID)), nil
+	},
+}
+
+var ContainerListTool = &Tool{
+	Definition: mcp.NewTool("container_list",
+		mcp.WithDescription("List available containers"),
+		mcp.WithString("explanation",
+			mcp.Description("One sentence explanation for why this container is being listed."),
+		),
+	),
+	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		containers := ListContainers()
+		out, err := json.Marshal(containers)
+		if err != nil {
+			return nil, err
+		}
+		return mcp.NewToolResultText(string(out)), nil
+	},
+}
+
+var ContainerRunCmdTool = &Tool{
+	Definition: mcp.NewTool("container_run_cmd",
+		mcp.WithDescription("Run a command on behalf of the user in the terminal."),
+		mcp.WithString("explanation",
+			mcp.Description("One sentence explanation for why this command is being run."),
+		),
+		mcp.WithString("container_id",
+			mcp.Description("The ID of the container for this command. Must call `container_create` first."),
+			mcp.Required(),
+		),
+		mcp.WithString("command",
+			mcp.Description("The terminal command to execute"),
+			mcp.Required(),
+		),
+		mcp.WithString("shell",
+			mcp.Description("The shell that will be interpreting this command (default: sh)"),
+			mcp.Required(),
+		),
+	),
+	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		containerID, ok := request.GetArguments()["container_id"].(string)
+		if !ok {
+			return nil, errors.New("container_id must be a string")
+		}
+		container := GetContainer(containerID)
+		if container == nil {
+			return nil, errors.New("container not found")
+		}
+		command, ok := request.GetArguments()["command"].(string)
+		if !ok {
+			return nil, errors.New("command must be a string")
+		}
+		shell, ok := request.GetArguments()["shell"].(string)
+		if !ok {
+			shell = "bash"
+		}
+		stdout, err := container.Run(ctx, command, shell)
+		if err != nil {
+			return nil, err
+		}
+		return mcp.NewToolResultText(stdout), nil
 	},
 }
 
@@ -152,67 +213,6 @@ var ContainerDownloadTool = &Tool{
 	},
 }
 
-var ContainerListTool = &Tool{
-	Definition: mcp.NewTool("container_list",
-		mcp.WithDescription("List available containers"),
-		mcp.WithString("explanation",
-			mcp.Description("One sentence explanation for why this container is being listed."),
-		),
-	),
-	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		containers := ListContainers()
-		out, err := json.Marshal(containers)
-		if err != nil {
-			return nil, err
-		}
-		return mcp.NewToolResultText(string(out)), nil
-	},
-}
-
-var ContainerRunCmdTool = &Tool{
-	Definition: mcp.NewTool("container_run_cmd",
-		mcp.WithDescription("Run a command on behalf of the user in the terminal."),
-		mcp.WithString("explanation",
-			mcp.Description("One sentence explanation for why this command is being run."),
-		),
-		mcp.WithString("container_id",
-			mcp.Description("The ID of the container for this command. Must call `container_create` first."),
-			mcp.Required(),
-		),
-		mcp.WithString("command",
-			mcp.Description("The terminal command to execute"),
-			mcp.Required(),
-		),
-		mcp.WithString("shell",
-			mcp.Description("The shell that will be interpreting this command (default: sh)"),
-			mcp.Required(),
-		),
-	),
-	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		containerID, ok := request.GetArguments()["container_id"].(string)
-		if !ok {
-			return nil, errors.New("container_id must be a string")
-		}
-		container := GetContainer(containerID)
-		if container == nil {
-			return nil, errors.New("container not found")
-		}
-		command, ok := request.GetArguments()["command"].(string)
-		if !ok {
-			return nil, errors.New("command must be a string")
-		}
-		shell, ok := request.GetArguments()["shell"].(string)
-		if !ok {
-			shell = "bash"
-		}
-		stdout, err := container.Run(ctx, command, shell)
-		if err != nil {
-			return nil, err
-		}
-		return mcp.NewToolResultText(stdout), nil
-	},
-}
-
 var ContainerFileReadTool = &Tool{
 	Definition: mcp.NewTool("container_file_read",
 		mcp.WithDescription("Read the contents of a file, specifying a line range or the entire file."),
@@ -261,6 +261,45 @@ var ContainerFileReadTool = &Tool{
 		}
 
 		return mcp.NewToolResultText(fileContents), nil
+	},
+}
+
+var ContainerFileListTool = &Tool{
+	Definition: mcp.NewTool("container_file_list",
+		mcp.WithDescription("List the contents of a directory"),
+		mcp.WithString("explanation",
+			mcp.Description("One sentence explanation for why this directory is being listed."),
+		),
+		mcp.WithString("container_id",
+			mcp.Description("The ID of the container for this command. Must call `container_create` first."),
+			mcp.Required(),
+		),
+		mcp.WithString("path",
+			mcp.Description("Path of the directory to list contents of."),
+			mcp.Required(),
+		),
+	),
+	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		containerID, ok := request.GetArguments()["container_id"].(string)
+		if !ok {
+			return nil, errors.New("container_id must be a string")
+		}
+		container := GetContainer(containerID)
+		if container == nil {
+			return nil, errors.New("container not found")
+		}
+
+		path, ok := request.GetArguments()["path"].(string)
+		if !ok {
+			return nil, errors.New("path must be a string")
+		}
+
+		out, err := container.FileList(ctx, path)
+		if err != nil {
+			return nil, err
+		}
+
+		return mcp.NewToolResultText(out), nil
 	},
 }
 
@@ -345,44 +384,5 @@ var ContainerFileDeleteTool = &Tool{
 		}
 
 		return mcp.NewToolResultText(fmt.Sprintf("file %s deleted successfully", targetFile)), nil
-	},
-}
-
-var ContainerFileListTool = &Tool{
-	Definition: mcp.NewTool("container_file_list",
-		mcp.WithDescription("List the contents of a directory"),
-		mcp.WithString("explanation",
-			mcp.Description("One sentence explanation for why this directory is being listed."),
-		),
-		mcp.WithString("container_id",
-			mcp.Description("The ID of the container for this command. Must call `container_create` first."),
-			mcp.Required(),
-		),
-		mcp.WithString("path",
-			mcp.Description("Path of the directory to list contents of."),
-			mcp.Required(),
-		),
-	),
-	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		containerID, ok := request.GetArguments()["container_id"].(string)
-		if !ok {
-			return nil, errors.New("container_id must be a string")
-		}
-		container := GetContainer(containerID)
-		if container == nil {
-			return nil, errors.New("container not found")
-		}
-
-		path, ok := request.GetArguments()["path"].(string)
-		if !ok {
-			return nil, errors.New("path must be a string")
-		}
-
-		out, err := container.FileList(ctx, path)
-		if err != nil {
-			return nil, err
-		}
-
-		return mcp.NewToolResultText(out), nil
 	},
 }
