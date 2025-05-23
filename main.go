@@ -20,6 +20,11 @@ func main() {
 	}
 	defer dag.Close()
 
+	if err := LoadContainers(); err != nil {
+		fmt.Fprintf(os.Stderr, "Error loading containers: %v\n", err)
+		os.Exit(1)
+	}
+
 	s := server.NewMCPServer(
 		"Dagger",
 		"1.0.0",

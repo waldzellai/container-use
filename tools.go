@@ -23,21 +23,21 @@ func RegisterTool(tool ...*Tool) {
 
 func init() {
 	RegisterTool(
-		SandboxCreateTool,
-		SandboxListTool,
-		RunTerminalCmdTool,
-		ReadFileTool,
+		ContainerCreateTool,
+		ContainerListTool,
+		ContainerRunCmdTool,
+		ContainerReadFileTool,
 	)
 }
 
-var SandboxCreateTool = &Tool{
-	Definition: mcp.NewTool("sandbox_create",
-		mcp.WithDescription("Create a new sandbox. The sandbox only contains the base image specified, anything else required will need to be installed by hand"),
+var ContainerCreateTool = &Tool{
+	Definition: mcp.NewTool("container_create",
+		mcp.WithDescription("Create a new container. The sandbox only contains the base image specified, anything else required will need to be installed by hand"),
 		mcp.WithString("explanation",
 			mcp.Description("One sentence explanation for why this sandbox is being created."),
 			mcp.Required(),
 		),
-		mcp.WithString("workdir",
+		mcp.WithString("local_workdir",
 			mcp.Description("The local directory to be loaded in the sandbox."),
 			mcp.Required(),
 		),
@@ -47,7 +47,7 @@ var SandboxCreateTool = &Tool{
 		),
 	),
 	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		workdir, ok := request.GetArguments()["workdir"].(string)
+		workdir, ok := request.GetArguments()["local_workdir"].(string)
 		if !ok {
 			return nil, errors.New("workdir must be a string")
 		}
@@ -55,22 +55,22 @@ var SandboxCreateTool = &Tool{
 		if !ok {
 			return nil, errors.New("image must be a string")
 		}
-		sandbox := CreateSandbox(image, workdir)
+		sandbox := CreateContainer(image, workdir)
 		return mcp.NewToolResultText(fmt.Sprintf(`{"id": %q}`, sandbox.ID)), nil
 	},
 }
 
-var SandboxListTool = &Tool{
-	Definition: mcp.NewTool("sandbox_list",
-		mcp.WithDescription("List available sandboxes"),
+var ContainerListTool = &Tool{
+	Definition: mcp.NewTool("container_list",
+		mcp.WithDescription("List available containers"),
 		mcp.WithString("explanation",
-			mcp.Description("One sentence explanation for why this sandbox is being created."),
+			mcp.Description("One sentence explanation for why this container is being listed."),
 			mcp.Required(),
 		),
 	),
 	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		sandboxes := ListSandboxes()
-		out, err := json.Marshal(sandboxes)
+		containers := ListContainers()
+		out, err := json.Marshal(containers)
 		if err != nil {
 			return nil, err
 		}
@@ -78,36 +78,44 @@ var SandboxListTool = &Tool{
 	},
 }
 
-var RunTerminalCmdTool = &Tool{
-	Definition: mcp.NewTool("sandbox_run_cmd",
+var ContainerRunCmdTool = &Tool{
+	Definition: mcp.NewTool("container_run_cmd",
 		mcp.WithDescription("Run a command on behalf of the user in the terminal."),
 		mcp.WithString("explanation",
 			mcp.Description("One sentence explanation for why this command is being run."),
 			mcp.Required(),
 		),
-		mcp.WithString("sandbox_id",
-			mcp.Description("The identifier of the sandbox for this command. Must call `sandbox_create` first."),
+		mcp.WithString("container_id",
+			mcp.Description("The ID of the container for this command. Must call `container_create` first."),
 			mcp.Required(),
 		),
 		mcp.WithString("command",
 			mcp.Description("The terminal command to execute"),
 			mcp.Required(),
 		),
+		mcp.WithString("shell",
+			mcp.Description("The shell that will be interpreting this command (default: sh)"),
+			mcp.Required(),
+		),
 	),
 	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		sandboxID, ok := request.GetArguments()["sandbox_id"].(string)
+		containerID, ok := request.GetArguments()["container_id"].(string)
 		if !ok {
-			return nil, errors.New("sandbox_id must be a string")
+			return nil, errors.New("container_id must be a string")
 		}
-		sandbox := GetSandbox(sandboxID)
-		if sandbox == nil {
-			return nil, errors.New("sandbox not found")
+		container := GetContainer(containerID)
+		if container == nil {
+			return nil, errors.New("container not found")
 		}
 		command, ok := request.GetArguments()["command"].(string)
 		if !ok {
 			return nil, errors.New("command must be a string")
 		}
-		stdout, err := sandbox.RunCmd(ctx, command)
+		shell, ok := request.GetArguments()["shell"].(string)
+		if !ok {
+			shell = "bash"
+		}
+		stdout, err := container.RunCmd(ctx, command, shell)
 		if err != nil {
 			return nil, err
 		}
@@ -115,15 +123,15 @@ var RunTerminalCmdTool = &Tool{
 	},
 }
 
-var ReadFileTool = &Tool{
-	Definition: mcp.NewTool("sandbox_read_file",
+var ContainerReadFileTool = &Tool{
+	Definition: mcp.NewTool("container_read_file",
 		mcp.WithDescription("Read the contents of a file, specifying a line range or the entire file."),
 		mcp.WithString("explanation",
 			mcp.Description("One sentence explanation for why this file is being read."),
 			mcp.Required(),
 		),
-		mcp.WithString("sandbox_id",
-			mcp.Description("The identifier of the sandbox for this command. Must call `sandbox_create` first."),
+		mcp.WithString("container_id",
+			mcp.Description("The ID of the container for this command. Must call `container_create` first."),
 			mcp.Required(),
 		),
 		mcp.WithString("target_file",
@@ -141,13 +149,13 @@ var ReadFileTool = &Tool{
 		),
 	),
 	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		sandboxID, ok := request.GetArguments()["sandbox_id"].(string)
+		containerID, ok := request.GetArguments()["container_id"].(string)
 		if !ok {
-			return nil, errors.New("sandbox_id must be a string")
+			return nil, errors.New("container_id must be a string")
 		}
-		sandbox := GetSandbox(sandboxID)
-		if sandbox == nil {
-			return nil, errors.New("sandbox not found")
+		container := GetContainer(containerID)
+		if container == nil {
+			return nil, errors.New("container not found")
 		}
 
 		targetFile, ok := request.GetArguments()["target_file"].(string)
@@ -158,7 +166,7 @@ var ReadFileTool = &Tool{
 		startLineOneIndexed, _ := request.GetArguments()["start_line_one_indexed"].(int)
 		endLineOneIndexedInclusive, _ := request.GetArguments()["end_line_one_indexed_inclusive"].(int)
 
-		fileContents, err := sandbox.ReadFile(ctx, targetFile, shouldReadEntireFile, startLineOneIndexed, endLineOneIndexedInclusive)
+		fileContents, err := container.ReadFile(ctx, targetFile, shouldReadEntireFile, startLineOneIndexed, endLineOneIndexedInclusive)
 		if err != nil {
 			return nil, err
 		}

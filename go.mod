@@ -6,6 +6,7 @@ require (
 	dagger.io/dagger v0.18.8
 	github.com/google/uuid v1.6.0
 	github.com/mark3labs/mcp-go v0.29.0
+	github.com/mitchellh/go-homedir v1.1.0
 )
 
 require (
@@ -16,7 +17,6 @@ require (
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.23.0 // indirect
-	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/sosodev/duration v1.3.1 // indirect
 	github.com/spf13/cast v1.7.1 // indirect
 	github.com/vektah/gqlparser/v2 v2.5.26 // indirect
