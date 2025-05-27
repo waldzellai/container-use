@@ -99,9 +99,18 @@ func (s *Container) FileRead(ctx context.Context, targetFile string, shouldReadE
 
 	lines := strings.Split(string(file), "\n")
 	start := startLineOneIndexed - 1
+	if start < 0 {
+		start = 0
+	}
+	if start >= len(lines) {
+		start = len(lines) - 1
+	}
 	end := endLineOneIndexedInclusive
-	if end > len(lines) {
-		end = len(lines)
+	if end >= len(lines) {
+		end = len(lines) - 1
+	}
+	if end < 0 {
+		end = 0
 	}
 	return strings.Join(lines[start:end], "\n"), nil
 }
