@@ -52,9 +52,9 @@ var ContainerCreateTool = &Tool{
 		),
 	),
 	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		image, ok := request.GetArguments()["image"].(string)
-		if !ok {
-			return nil, errors.New("image must be a string")
+		image, err := request.RequireString("image")
+		if err != nil {
+			return nil, err
 		}
 		sandbox := CreateContainer(image)
 		return mcp.NewToolResultText(fmt.Sprintf(`{"id": %q}`, sandbox.ID)), nil
@@ -98,16 +98,16 @@ var ContainerRunCmdTool = &Tool{
 		),
 	),
 	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		containerID, ok := request.GetArguments()["container_id"].(string)
-		if !ok {
-			return nil, errors.New("container_id must be a string")
+		containerID, err := request.RequireString("container_id")
+		if err != nil {
+			return nil, err
 		}
 		container := GetContainer(containerID)
 		if container == nil {
 			return nil, errors.New("container not found")
 		}
-		command, ok := request.GetArguments()["command"].(string)
-		if !ok {
+		command, err := request.RequireString("command")
+		if err != nil {
 			return nil, errors.New("command must be a string")
 		}
 		shell, ok := request.GetArguments()["shell"].(string)
@@ -142,21 +142,21 @@ var ContainerUploadTool = &Tool{
 		),
 	),
 	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		containerID, ok := request.GetArguments()["container_id"].(string)
-		if !ok {
-			return nil, errors.New("container_id must be a string")
+		containerID, err := request.RequireString("container_id")
+		if err != nil {
+			return nil, err
 		}
 		container := GetContainer(containerID)
 		if container == nil {
 			return nil, errors.New("container not found")
 		}
 
-		source, ok := request.GetArguments()["source"].(string)
-		if !ok {
-			return nil, errors.New("source must be a string")
+		source, err := request.RequireString("source")
+		if err != nil {
+			return nil, err
 		}
-		target, ok := request.GetArguments()["target"].(string)
-		if !ok {
+		target, err := request.RequireString("target")
+		if err != nil {
 			return nil, errors.New("target must be a string")
 		}
 
@@ -188,21 +188,21 @@ var ContainerDownloadTool = &Tool{
 		),
 	),
 	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		containerID, ok := request.GetArguments()["container_id"].(string)
-		if !ok {
-			return nil, errors.New("container_id must be a string")
+		containerID, err := request.RequireString("container_id")
+		if err != nil {
+			return nil, err
 		}
 		container := GetContainer(containerID)
 		if container == nil {
 			return nil, errors.New("container not found")
 		}
 
-		source, ok := request.GetArguments()["source"].(string)
-		if !ok {
-			return nil, errors.New("source must be a string")
+		source, err := request.RequireString("source")
+		if err != nil {
+			return nil, err
 		}
-		target, ok := request.GetArguments()["target"].(string)
-		if !ok {
+		target, err := request.RequireString("target")
+		if err != nil {
 			return nil, errors.New("target must be a string")
 		}
 
@@ -234,21 +234,21 @@ var ContainerDiffTool = &Tool{
 		),
 	),
 	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		containerID, ok := request.GetArguments()["container_id"].(string)
-		if !ok {
-			return nil, errors.New("container_id must be a string")
+		containerID, err := request.RequireString("container_id")
+		if err != nil {
+			return nil, err
 		}
 		container := GetContainer(containerID)
 		if container == nil {
 			return nil, errors.New("container not found")
 		}
 
-		source, ok := request.GetArguments()["source"].(string)
-		if !ok {
-			return nil, errors.New("source must be a string")
+		source, err := request.RequireString("source")
+		if err != nil {
+			return nil, err
 		}
-		target, ok := request.GetArguments()["target"].(string)
-		if !ok {
+		target, err := request.RequireString("target")
+		if err != nil {
 			return nil, errors.New("target must be a string")
 		}
 
@@ -286,22 +286,22 @@ var ContainerFileReadTool = &Tool{
 		),
 	),
 	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		containerID, ok := request.GetArguments()["container_id"].(string)
-		if !ok {
-			return nil, errors.New("container_id must be a string")
+		containerID, err := request.RequireString("container_id")
+		if err != nil {
+			return nil, err
 		}
 		container := GetContainer(containerID)
 		if container == nil {
 			return nil, errors.New("container not found")
 		}
 
-		targetFile, ok := request.GetArguments()["target_file"].(string)
-		if !ok {
-			return nil, errors.New("target_file must be a string")
+		targetFile, err := request.RequireString("target_file")
+		if err != nil {
+			return nil, err
 		}
-		shouldReadEntireFile, _ := request.GetArguments()["should_read_entire_file"].(bool)
-		startLineOneIndexed, _ := request.GetArguments()["start_line_one_indexed"].(int)
-		endLineOneIndexedInclusive, _ := request.GetArguments()["end_line_one_indexed_inclusive"].(int)
+		shouldReadEntireFile := request.GetBool("should_read_entire_file", false)
+		startLineOneIndexed := request.GetInt("start_line_one_indexed", 0)
+		endLineOneIndexedInclusive := request.GetInt("end_line_one_indexed_inclusive", 0)
 
 		fileContents, err := container.FileRead(ctx, targetFile, shouldReadEntireFile, startLineOneIndexed, endLineOneIndexedInclusive)
 		if err != nil {
@@ -328,18 +328,18 @@ var ContainerFileListTool = &Tool{
 		),
 	),
 	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		containerID, ok := request.GetArguments()["container_id"].(string)
-		if !ok {
-			return nil, errors.New("container_id must be a string")
+		containerID, err := request.RequireString("container_id")
+		if err != nil {
+			return nil, err
 		}
 		container := GetContainer(containerID)
 		if container == nil {
 			return nil, errors.New("container not found")
 		}
 
-		path, ok := request.GetArguments()["path"].(string)
-		if !ok {
-			return nil, errors.New("path must be a string")
+		path, err := request.RequireString("path")
+		if err != nil {
+			return nil, err
 		}
 
 		out, err := container.FileList(ctx, path)
@@ -371,21 +371,21 @@ var ContainerFileWriteTool = &Tool{
 		),
 	),
 	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		containerID, ok := request.GetArguments()["container_id"].(string)
-		if !ok {
-			return nil, errors.New("container_id must be a string")
+		containerID, err := request.RequireString("container_id")
+		if err != nil {
+			return nil, err
 		}
 		container := GetContainer(containerID)
 		if container == nil {
 			return nil, errors.New("container not found")
 		}
 
-		targetFile, ok := request.GetArguments()["target_file"].(string)
-		if !ok {
-			return nil, errors.New("target_file must be a string")
+		targetFile, err := request.RequireString("target_file")
+		if err != nil {
+			return nil, err
 		}
-		contents, ok := request.GetArguments()["contents"].(string)
-		if !ok {
+		contents, err := request.RequireString("contents")
+		if err != nil {
 			return nil, errors.New("contents must be a string")
 		}
 
@@ -413,18 +413,18 @@ var ContainerFileDeleteTool = &Tool{
 		),
 	),
 	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		containerID, ok := request.GetArguments()["container_id"].(string)
-		if !ok {
-			return nil, errors.New("container_id must be a string")
+		containerID, err := request.RequireString("container_id")
+		if err != nil {
+			return nil, err
 		}
 		container := GetContainer(containerID)
 		if container == nil {
 			return nil, errors.New("container not found")
 		}
 
-		targetFile, ok := request.GetArguments()["target_file"].(string)
-		if !ok {
-			return nil, errors.New("target_file must be a string")
+		targetFile, err := request.RequireString("target_file")
+		if err != nil {
+			return nil, err
 		}
 
 		if err := container.FileDelete(ctx, targetFile); err != nil {
