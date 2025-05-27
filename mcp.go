@@ -116,7 +116,7 @@ var ContainerRunCmdTool = &Tool{
 		}
 		stdout, err := container.Run(ctx, command, shell)
 		if err != nil {
-			return nil, err
+			return mcp.NewToolResultErrorFromErr("failed to run command", err), nil
 		}
 		return mcp.NewToolResultText(stdout), nil
 	},
@@ -157,11 +157,11 @@ var ContainerUploadTool = &Tool{
 		}
 		target, err := request.RequireString("target")
 		if err != nil {
-			return nil, errors.New("target must be a string")
+			return nil, err
 		}
 
 		if err := container.Upload(ctx, source, target); err != nil {
-			return nil, err
+			return mcp.NewToolResultErrorFromErr("failed to upload files", err), nil
 		}
 
 		return mcp.NewToolResultText("files uploaded successfully"), nil
@@ -207,7 +207,7 @@ var ContainerDownloadTool = &Tool{
 		}
 
 		if err := container.Download(ctx, source, target); err != nil {
-			return nil, err
+			return mcp.NewToolResultErrorFromErr("failed to download files", err), nil
 		}
 
 		return mcp.NewToolResultText(fmt.Sprintf("files downloaded successfully to %s", target)), nil
@@ -254,7 +254,7 @@ var ContainerDiffTool = &Tool{
 
 		diff, err := container.Diff(ctx, source, target)
 		if err != nil {
-			return nil, err
+			return mcp.NewToolResultErrorFromErr("failed to diff", err), nil
 		}
 
 		return mcp.NewToolResultText(diff), nil
@@ -305,7 +305,7 @@ var ContainerFileReadTool = &Tool{
 
 		fileContents, err := container.FileRead(ctx, targetFile, shouldReadEntireFile, startLineOneIndexed, endLineOneIndexedInclusive)
 		if err != nil {
-			return nil, err
+			return mcp.NewToolResultErrorFromErr("failed to read file", err), nil
 		}
 
 		return mcp.NewToolResultText(fileContents), nil
@@ -344,7 +344,7 @@ var ContainerFileListTool = &Tool{
 
 		out, err := container.FileList(ctx, path)
 		if err != nil {
-			return nil, err
+			return mcp.NewToolResultErrorFromErr("failed to list directory", err), nil
 		}
 
 		return mcp.NewToolResultText(out), nil
@@ -386,11 +386,11 @@ var ContainerFileWriteTool = &Tool{
 		}
 		contents, err := request.RequireString("contents")
 		if err != nil {
-			return nil, errors.New("contents must be a string")
+			return nil, err
 		}
 
 		if err := container.FileWrite(ctx, targetFile, contents); err != nil {
-			return nil, err
+			return mcp.NewToolResultErrorFromErr("failed to write file", err), nil
 		}
 
 		return mcp.NewToolResultText(fmt.Sprintf("file %s written successfully", targetFile)), nil
@@ -428,7 +428,7 @@ var ContainerFileDeleteTool = &Tool{
 		}
 
 		if err := container.FileDelete(ctx, targetFile); err != nil {
-			return nil, err
+			return mcp.NewToolResultErrorFromErr("failed to delete file", err), nil
 		}
 
 		return mcp.NewToolResultText(fmt.Sprintf("file %s deleted successfully", targetFile)), nil
