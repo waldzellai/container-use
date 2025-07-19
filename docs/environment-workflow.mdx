@@ -89,69 +89,64 @@ container-use checkout fancy-mallard
 
 After observing the agent's work, you have three paths forward:
 
-<Tabs>
-  <Tab title="✅ Accept Work">
-    When the agent succeeded and you're happy with the results, you have two options:
+### ✅ Accept Work
 
-    **Option 1: Merge (Preserve History)**
-    ```bash
-    # Merge the environment into your current branch
-    container-use merge fancy-mallard
+When the agent succeeded and you're happy with the results, you have two options:
 
-    # Clean up (optional)
-    container-use delete fancy-mallard
-    ```
+**Option 1: Merge (Preserve History)**
+```bash
+# Merge the environment into your current branch
+container-use merge fancy-mallard
 
-    **Option 2: Apply (Customize Commit)**
-    ```bash
-    # Apply changes as staged modifications
-    container-use apply fancy-mallard
+# Clean up (optional)
+container-use delete fancy-mallard
+```
 
-    # Review and commit with your own message
-    git status
-    git commit -m "Your custom commit message"
+**Option 2: Apply (Customize Commit)**
+```bash
+# Apply changes as staged modifications
+container-use apply fancy-mallard
 
-    # Clean up (optional)
-    container-use delete fancy-mallard
-    ```
+# Review and commit with your own message
+git status
+git commit -m "Your custom commit message"
 
-    Choose **merge** to preserve the agent's commit history, or **apply** to create your own commit message and review changes before committing.
+# Clean up (optional)
+container-use delete fancy-mallard
+```
 
-  </Tab>
+Choose `merge` to preserve the agent's commit history, or `apply` to create your own commit message and review changes before committing.
 
-  <Tab title="🔄 Iterate & Refine">
-    When the agent is close but needs refinement:
+### 🔄 Iterate & Refine
 
-    ```bash
-    # A. Continue the existing chat
-    # Prompt: "[refined instructions]"
-    # B. Start a new chat and continue working in the same environment.
-    # Prompt: "Work in the fancy-mallard environment and [refined instructions]"
-    ```
+When the agent is close but needs refinement:
 
-    The agent will resume in the existing environment with all previous work intact. Perfect for:
-    - Adding missing features
-    - Fixing bugs the agent introduced
-    - Adjusting styling or behavior
-    - Building on partial progress
+```bash
+# A. Continue the existing chat
+# Prompt: "[refined instructions]"
+# B. Start a new chat and continue working in the same environment.
+# Prompt: "Work in the fancy-mallard environment and [refined instructions]"
+```
 
-  </Tab>
+The agent will resume in the existing environment with all previous work intact. Perfect for:
+- Adding missing features
+- Fixing bugs the agent introduced
+- Adjusting styling or behavior
+- Building on partial progress
 
-  <Tab title="🗑️ Start Fresh">
-    When the agent went down the wrong path:
+### 🗑️ Start Fresh
 
-    ```bash
-    # Discard the environment
-    container-use delete fancy-mallard
+When the agent went down the wrong path:
 
-    # Start over with a new prompt
-    # The agent will create a fresh environment from your current branch
-    ```
+```bash
+# Discard the environment
+container-use delete fancy-mallard
 
-    You're back to your last known good state (your current branch) and can try a different approach.
+# Start over with a new prompt
+# The agent will create a fresh environment from your current branch
+```
 
-  </Tab>
-</Tabs>
+You're back to your last known good state (your current branch) and can try a different approach.
 
 ## Resuming Work in Environments
 
@@ -248,52 +243,31 @@ Each environment is completely isolated - no conflicts, no interference.
 
 ## Best Practices
 
-<AccordionGroup>
-  <Accordion title="Start with Quick Assessment">
-    Always use `container-use diff` and `container-use log` first. Most of the time, this gives you enough information to decide next steps without the overhead of checking out or entering containers.
-  </Accordion>
+- **Start with Quick Assessment**: Always use `container-use diff` and `container-use log` first. Most of the time, this gives you enough information to decide next steps without the overhead of checking out or entering containers.
 
-{" "}
+- **Merge vs Apply**: Use `merge` when you want to preserve the agent's commit history and understand how the work evolved. Use `apply` when you want to create clean, customized commits or review changes before committing.
 
-<Accordion title="Choose the Right Acceptance Method">
-  Use **merge** when you want to preserve the agent's commit history and
-  understand how the work evolved. Use **apply** when you want to create clean,
-  customized commits or review changes before committing.
-</Accordion>
+- **Don't Be Afraid to Delete**: Environments are disposable by design. If an agent gets stuck or goes down the wrong path, it's often faster to delete and start fresh than to try to fix problematic work.
 
-{" "}
+- **Use Specific Resume Prompts**: When resuming work, be specific about what you want. Instead of "continue working", say "work in ENV-ID and add error handling to the upload function".
 
-<Accordion title="Don't Be Afraid to Delete">
-  Environments are disposable by design. If an agent gets stuck or goes down the
-  wrong path, it's often faster to delete and start fresh than to try to fix
-  problematic work.
-</Accordion>
-
-{" "}
-
-<Accordion title="Use Specific Resume Prompts">
-  When resuming work, be specific about what you want. Instead of "continue
-  working", say "work in ENV-ID and add error handling to the upload function".
-</Accordion>
-
-  <Accordion title="Keep Your Branch Clean">
-    Your main working branch should only contain merged, tested work. Use environments for all experimental and agent-driven development.
-  </Accordion>
-</AccordionGroup>
+- **Keep Your Branch Clean**: Your main working branch should only contain merged, tested work. Use environments for all experimental and agent-driven development.
 
 ## Essential Commands Reference
 
-| Command | Purpose | When to Use |
-| ------- | ------- | ----------- |
-
-| `container-use list` | See all environments | Check status of agent work |
-| `container-use log <env-id>` | View commit history + commands | Understand what agent did |
-| `container-use diff <env-id>` | See code changes | Quick assessment of changes |
-| `container-use terminal <env-id>` | Enter live container | Debug, test, hands-on exploration |
-| `container-use checkout <env-id>` | Bring changes to local IDE | Detailed code review |
-| `container-use merge <env-id>` | Accept work preserving history | When you want agent's commit history |
-| `container-use apply <env-id>` | Apply as staged changes | When you want to customize commits |
-| `container-use delete <env-id>` | Discard environment | When starting over |
+| | |
+| --- | --- |
+| `container-use list` | See all environments and their status |
+| `container-use watch` | Monitor environment activity in real-time as agents work |
+| `container-use log <env-id>` | View commit history and commands to understand what the agent did |
+| `container-use diff <env-id>` | Quick assessment of code changes |
+| `container-use terminal <env-id>` | Enter live container to debug, test, or explore |
+| `container-use checkout <env-id>` | Bring changes to local IDE for detailed review |
+| `container-use merge <env-id>` | Accept work preserving agent's commit history |
+| `container-use apply <env-id>` | Apply as staged changes to customize commits |
+| `container-use delete <env-id>` | Discard environment and start over |
+| `container-use config` | Configure default settings for new environments |
+| `container-use version` | Display version information |
 
 ## Next Steps
 
