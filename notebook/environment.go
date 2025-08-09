@@ -12,8 +12,9 @@ import (
 	"time"
 
 	"dagger.io/dagger"
-	"github.com/dagger/container-use/environment"
 )
+
+var dag *dagger.Client
 
 const (
 	defaultNotebookImage = "jupyter/base-notebook:latest"
@@ -21,6 +22,12 @@ const (
 	notebookFile         = "notebook.ipynb"
 	kernelStateFile      = "kernel-state.json"
 )
+
+// Initialize sets up the Dagger client
+func Initialize(client *dagger.Client) error {
+	dag = client
+	return nil
+}
 
 // NotebookCell represents a single cell in a notebook
 type NotebookCell struct {
@@ -46,9 +53,19 @@ type KernelState struct {
 	ExecutionCount int                    `json:"execution_count"`
 }
 
+// Environment represents a base environment (simplified from container-use)
+type Environment struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Source   string `json:"source"`
+	Worktree string `json:"worktree"`
+	Workdir  string `json:"workdir"`
+	BaseImage string `json:"base_image"`
+}
+
 // NotebookEnvironment represents a notebook execution environment
 type NotebookEnvironment struct {
-	*environment.Environment
+	*Environment
 	
 	// Notebook-specific fields
 	NotebookPath string       `json:"notebook_path"`
@@ -63,10 +80,14 @@ type NotebookEnvironment struct {
 
 // Create creates a new notebook environment
 func Create(ctx context.Context, explanation, source, name string, opts ...Option) (*NotebookEnvironment, error) {
-	// Create base environment
-	baseEnv, err := environment.Create(ctx, explanation, source, name)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create base environment: %w", err)
+	// Create base environment (simplified version)
+	baseEnv := &Environment{
+		ID:        fmt.Sprintf("%s-%d", name, time.Now().Unix()),
+		Name:      name,
+		Source:    source,
+		Worktree:  fmt.Sprintf("/tmp/notebook-use/%s", name),
+		Workdir:   "/home/jovyan/work",
+		BaseImage: defaultNotebookImage,
 	}
 	
 	nb := &NotebookEnvironment{
