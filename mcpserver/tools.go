@@ -69,6 +69,9 @@ func RunStdioServer(ctx context.Context, dag *dagger.Client) error {
 		s.AddTool(t.Definition, wrapToolWithClient(t, dag).Handler)
 	}
 
+	// Add kill tool
+	s.AddTool(EnvironmentKillBackgroundTool.Definition, wrapToolWithClient(EnvironmentKillBackgroundTool, dag).Handler)
+
 	slog.Info("starting server")
 
 	stdioSrv := server.NewStdioServer(s)
@@ -807,5 +810,38 @@ var EnvironmentAddServiceTool = &Tool{
 		}
 
 		return mcp.NewToolResultText(fmt.Sprintf("Service added and started successfully: %s", string(output))), nil
+	},
+}
+
+var EnvironmentKillBackgroundTool = &Tool{
+	Definition: newEnvironmentTool(
+		"environment_kill_background",
+		"Stop a background process in host mode by PID and update the environment state.",
+		mcp.WithNumber("pid",
+			mcp.Description("The PID of the process to stop."),
+			mcp.Required(),
+		),
+	),
+	Handler: func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		repo, env, err := openEnvironment(ctx, request)
+		if err != nil {
+			return nil, err
+		}
+		var pid int
+		if raw, ok := request.GetArguments()["pid"]; ok {
+			if f, ok := raw.(float64); ok {
+				pid = int(f)
+			}
+		}
+		if pid <= 0 {
+			return nil, fmt.Errorf("invalid pid")
+		}
+		if err := env.KillBackground(pid); err != nil {
+			return nil, err
+		}
+		if err := repo.Update(ctx, env, request.GetString("explanation", "Stop background process")); err != nil {
+			return nil, fmt.Errorf("failed to update repository: %w", err)
+		}
+		return mcp.NewToolResultText(fmt.Sprintf("Stopped process %d", pid)), nil
 	},
 }

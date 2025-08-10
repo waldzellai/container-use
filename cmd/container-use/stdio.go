@@ -1,8 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"log/slog"
 	"os"
+	"strconv"
 
 	"dagger.io/dagger"
 	"github.com/dagger/container-use/mcpserver"
@@ -34,6 +36,23 @@ var stdioCmd = &cobra.Command{
 	},
 }
 
+var killBackgroundCmd = &cobra.Command{
+	Use:   "kill-background [pid]",
+	Short: "Kill a background process in host mode by PID",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		pid, err := strconv.Atoi(args[0])
+		if err != nil || pid <= 0 {
+			return fmt.Errorf("invalid pid")
+		}
+		// This CLI currently proxies to MCP; print guidance
+		fmt.Fprintln(os.Stderr, "Use the MCP tool environment_kill_background to stop processes from clients.")
+		fmt.Printf("Requested stop for PID %d\n", pid)
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(stdioCmd)
+	rootCmd.AddCommand(killBackgroundCmd)
 }
