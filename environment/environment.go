@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"dagger.io/dagger"
@@ -116,6 +117,11 @@ func LoadInfo(ctx context.Context, id string, state []byte, worktree string) (*E
 			return nil, err
 		}
 		envInfo.State.Config = config
+	}
+
+	// Default to host mode if env var set
+	if os.Getenv("CONTAINER_USE_DEFAULT_HOST") == "1" {
+		envInfo.State.Config.BaseImage = "host"
 	}
 
 	// In host mode, ensure workdir points to the actual worktree path
@@ -622,4 +628,35 @@ func isPortAvailable(port int) bool {
 	}
 	l.Close()
 	return true
+}
+
+// KillBackground terminates a background host process by PID and removes it from state
+func (env *Environment) KillBackground(pid int) error {
+	if !env.IsHost() {
+		return fmt.Errorf("kill is only supported in host mode")
+	}
+	process, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("process not found: %w", err)
+	}
+	// Try graceful SIGTERM first
+	_ = process.Signal(syscall.SIGTERM)
+	// Small grace; in notebook we can’t wait reliably, so force after a short delay
+	time.Sleep(500 * time.Millisecond)
+	_ = process.Signal(syscall.SIGKILL)
+
+	// Remove from state
+	env.mu.Lock()
+	newList := make([]BackgroundProcess, 0, len(env.State.BackgroundProcesses))
+	for _, bp := range env.State.BackgroundProcesses {
+		if bp.PID != pid {
+			newList = append(newList, bp)
+		}
+	}
+	env.State.BackgroundProcesses = newList
+	env.State.UpdatedAt = time.Now()
+	env.mu.Unlock()
+
+	env.Notes.Add("Stopped background process PID=%d", pid)
+	return nil
 }
