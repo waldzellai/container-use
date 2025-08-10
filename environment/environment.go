@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -169,12 +171,12 @@ func containerWithEnvAndSecrets(dag *dagger.Client, container *dagger.Container,
 func (env *Environment) buildBase(ctx context.Context, baseSourceDir *dagger.Directory) (*dagger.Container, error) {
 	// Host execution path: run setup/install directly in worktree and skip containers/services
 	if env.IsHost() {
+		hostEnv := env.buildHostEnv()
 		runCommands := func(commands []string) error {
 			for _, command := range commands {
 				cmd := exec.CommandContext(ctx, "sh", "-c", command)
 				cmd.Dir = env.State.Config.Workdir
-				// Apply env vars defined in config in addition to inheriting current env
-				cmd.Env = append([]string{}, append(execEnv(), env.State.Config.Env...)...)
+				cmd.Env = hostEnv
 
 				output, err := cmd.CombinedOutput()
 				exitCode := 0
@@ -182,11 +184,9 @@ func (env *Environment) buildBase(ctx context.Context, baseSourceDir *dagger.Dir
 					if ee, ok := err.(*exec.ExitError); ok {
 						exitCode = ee.ExitCode()
 					} else {
-						// treat as non-zero if unknown error
 						exitCode = 1
 					}
 				}
-				// In host mode, separate stdout/stderr is not trivial with CombinedOutput; log all in stdout
 				stdout := string(output)
 				stderr := ""
 				if err != nil {
@@ -313,7 +313,7 @@ func (env *Environment) Run(ctx context.Context, command, shell string, useEntry
 		args := []string{shell, "-c", command}
 		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 		cmd.Dir = env.State.Config.Workdir
-		cmd.Env = append([]string{}, append(execEnv(), env.State.Config.Env...)...)
+		cmd.Env = env.buildHostEnv()
 		output, err := cmd.CombinedOutput()
 		exitCode := 0
 		if err != nil {
@@ -381,20 +381,47 @@ func (env *Environment) RunBackground(ctx context.Context, command, shell string
 		if strings.TrimSpace(command) == "" {
 			return nil, fmt.Errorf("background command is empty")
 		}
-		args := []string{shell, "-c", command}
+		// Choose ports; set PORT for single-port commands
+		chosen := make([]int, 0, len(ports))
+		for _, p := range ports {
+			cp, err := env.chooseHostPort(p)
+			if err != nil {
+				return nil, err
+			}
+			chosen = append(chosen, cp)
+		}
+		envVars := env.buildHostEnv()
+		if len(chosen) == 1 {
+			// Add/override PORT
+			envVars = append(envVars, "PORT="+strconv.Itoa(chosen[0]))
+		}
 		displayCommand := command + " &"
+		args := []string{shell, "-c", command}
 		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 		cmd.Dir = env.State.Config.Workdir
-		cmd.Env = append([]string{}, append(execEnv(), env.State.Config.Env...)...)
+		cmd.Env = envVars
 		if err := cmd.Start(); err != nil {
 			// Record failure
 			env.Notes.AddCommand(displayCommand, 1, "", err.Error())
 			return nil, err
 		}
+		// Record PID
+		env.mu.Lock()
+		env.State.BackgroundProcesses = append(env.State.BackgroundProcesses, BackgroundProcess{
+			PID:       cmd.Process.Pid,
+			Command:   command,
+			Shell:     shell,
+			Ports:     chosen,
+			Workdir:   env.State.Config.Workdir,
+			StartedAt: time.Now(),
+		})
+		env.State.UpdatedAt = time.Now()
+		env.mu.Unlock()
+
 		// Do not wait; treat as started
 		env.Notes.AddCommand(displayCommand, 0, "", "")
 		endpoints := EndpointMappings{}
-		for _, port := range ports {
+		for _, port := range chosen {
 			endpoints[port] = &EndpointMapping{
 				EnvironmentInternal: fmt.Sprintf("tcp://127.0.0.1:%d", port),
 				HostExternal:        fmt.Sprintf("tcp://127.0.0.1:%d", port),
@@ -552,4 +579,47 @@ func combineStdoutStderr(stdout, stderr string) string {
 // execEnv returns the current process environment without mutation
 func execEnv() []string {
 	return os.Environ()
+}
+
+// buildHostEnv merges host environment with configured env vars and secrets
+func (env *Environment) buildHostEnv() []string {
+	base := os.Environ()
+	// Add/override regular env vars
+	for _, kv := range env.State.Config.Env {
+		base = append(base, kv)
+	}
+	// Secrets are provided as KEY=ENV_NAME; we resolve from the host's environment
+	for _, kv := range env.State.Config.Secrets {
+		k, v, ok := strings.Cut(kv, "=")
+		if !ok {
+			continue
+		}
+		if val, found := os.LookupEnv(v); found {
+			base = append(base, fmt.Sprintf("%s=%s", k, val))
+		}
+	}
+	return base
+}
+
+// chooseHostPort returns a usable port; 0 or unavailable port picks a random free port
+func (env *Environment) chooseHostPort(requested int) (int, error) {
+	if requested > 0 && isPortAvailable(requested) {
+		return requested, nil
+	}
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return 0, fmt.Errorf("failed to allocate port: %w", err)
+	}
+	defer l.Close()
+	addr := l.Addr().(*net.TCPAddr)
+	return addr.Port, nil
+}
+
+func isPortAvailable(port int) bool {
+	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		return false
+	}
+	l.Close()
+	return true
 }

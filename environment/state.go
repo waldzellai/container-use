@@ -13,6 +13,18 @@ type State struct {
 	Config    *EnvironmentConfig `json:"config,omitempty"`
 	Container string             `json:"container,omitempty"`
 	Title     string             `json:"title,omitempty"`
+
+	BackgroundProcesses []BackgroundProcess `json:"background_processes,omitempty"`
+}
+
+// BackgroundProcess records a host-mode background subprocess
+type BackgroundProcess struct {
+	PID       int       `json:"pid"`
+	Command   string    `json:"command"`
+	Shell     string    `json:"shell"`
+	Ports     []int     `json:"ports,omitempty"`
+	Workdir   string    `json:"workdir"`
+	StartedAt time.Time `json:"started_at"`
 }
 
 func (s *State) Marshal() ([]byte, error) {

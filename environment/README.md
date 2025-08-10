@@ -10,6 +10,26 @@ Each environment consists of:
 - **History**: Versioned snapshots of container state changes appended to the branch as notes
 - **Configuration**: Base image, setup commands, secrets, and instructions that can be checked into the source repo.
 
+## Host mode (no Docker)
+
+When `base_image` is set to `"host"` in `.container-use/environment.json`, commands run directly on the host in the environment worktree and file operations use direct filesystem I/O. Git notes continue to record command logs.
+
+- Setup/Install/Run: executed with `sh -c` in the worktree
+- Files: read/write via OS filesystem calls
+- Background services: started as subprocesses; PID recorded in state; endpoints map to `127.0.0.1:<port>`
+- Secrets: `secrets` are interpreted as `KEY=ENV_NAME` and resolved from host environment
+- Not supported: interactive terminal and container checkpoints
+
+To enable host mode, set:
+
+```
+{
+  "base_image": "host"
+}
+```
+
+The workdir will be set automatically to the environment worktree.
+
 ## Key Features
 
 - **Branch-Based**: Each environment is a Git branch that syncs into the container-use/ remote
