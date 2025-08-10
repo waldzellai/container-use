@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -45,12 +47,20 @@ func New(ctx context.Context, dag *dagger.Client, id, title string, config *Envi
 		dag: dag,
 	}
 
+	// Build base according to execution mode
 	container, err := env.buildBase(ctx, initialSourceDir)
 	if err != nil {
 		return nil, err
 	}
 
 	slog.Info("Creating environment", "id", env.ID, "workdir", env.State.Config.Workdir)
+
+	if env.IsHost() {
+		if err := env.applyHost(ctx); err != nil {
+			return nil, err
+		}
+		return env, nil
+	}
 
 	if err := env.apply(ctx, container); err != nil {
 		return nil, err
@@ -106,6 +116,11 @@ func LoadInfo(ctx context.Context, id string, state []byte, worktree string) (*E
 		envInfo.State.Config = config
 	}
 
+	// In host mode, ensure workdir points to the actual worktree path
+	if envInfo.State.Config != nil && strings.EqualFold(envInfo.State.Config.BaseImage, "host") {
+		envInfo.State.Config.Workdir = worktree
+	}
+
 	return envInfo, nil
 }
 
@@ -152,6 +167,50 @@ func containerWithEnvAndSecrets(dag *dagger.Client, container *dagger.Container,
 }
 
 func (env *Environment) buildBase(ctx context.Context, baseSourceDir *dagger.Directory) (*dagger.Container, error) {
+	// Host execution path: run setup/install directly in worktree and skip containers/services
+	if env.IsHost() {
+		runCommands := func(commands []string) error {
+			for _, command := range commands {
+				cmd := exec.CommandContext(ctx, "sh", "-c", command)
+				cmd.Dir = env.State.Config.Workdir
+				// Apply env vars defined in config in addition to inheriting current env
+				cmd.Env = append([]string{}, append(execEnv(), env.State.Config.Env...)...)
+
+				output, err := cmd.CombinedOutput()
+				exitCode := 0
+				if err != nil {
+					if ee, ok := err.(*exec.ExitError); ok {
+						exitCode = ee.ExitCode()
+					} else {
+						// treat as non-zero if unknown error
+						exitCode = 1
+					}
+				}
+				// In host mode, separate stdout/stderr is not trivial with CombinedOutput; log all in stdout
+				stdout := string(output)
+				stderr := ""
+				if err != nil {
+					stderr = err.Error()
+				}
+				env.Notes.AddCommand(command, exitCode, stdout, stderr)
+				if err != nil {
+					return fmt.Errorf("command %q failed: %w", command, err)
+				}
+			}
+			return nil
+		}
+
+		// Run setup commands first, then install commands
+		if err := runCommands(env.State.Config.SetupCommands); err != nil {
+			return nil, fmt.Errorf("setup command failed: %w", err)
+		}
+		if err := runCommands(env.State.Config.InstallCommands); err != nil {
+			return nil, fmt.Errorf("install command failed: %w", err)
+		}
+		// No container to return in host mode
+		return nil, nil
+	}
+
 	container := env.dag.
 		Container().
 		From(env.State.Config.BaseImage).
@@ -221,9 +280,22 @@ func (env *Environment) UpdateConfig(ctx context.Context, newConfig *Environment
 	env.State.Config = newConfig
 
 	// Re-build the base image with the new config
-	container, err := env.buildBase(ctx, env.Workdir())
+	var container *dagger.Container
+	var err error
+	if env.IsHost() {
+		container, err = env.buildBase(ctx, nil)
+	} else {
+		container, err = env.buildBase(ctx, env.Workdir())
+	}
 	if err != nil {
 		return err
+	}
+
+	if env.IsHost() {
+		if err := env.applyHost(ctx); err != nil {
+			return err
+		}
+		return nil
 	}
 
 	if err := env.apply(ctx, container); err != nil {
@@ -234,6 +306,32 @@ func (env *Environment) UpdateConfig(ctx context.Context, newConfig *Environment
 }
 
 func (env *Environment) Run(ctx context.Context, command, shell string, useEntrypoint bool) (string, error) {
+	if env.IsHost() {
+		if strings.TrimSpace(command) == "" {
+			return "", nil
+		}
+		args := []string{shell, "-c", command}
+		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+		cmd.Dir = env.State.Config.Workdir
+		cmd.Env = append([]string{}, append(execEnv(), env.State.Config.Env...)...)
+		output, err := cmd.CombinedOutput()
+		exitCode := 0
+		if err != nil {
+			if ee, ok := err.(*exec.ExitError); ok {
+				exitCode = ee.ExitCode()
+			} else {
+				exitCode = 1
+			}
+		}
+		stdout := string(output)
+		stderr := ""
+		if err != nil {
+			stderr = err.Error()
+		}
+		env.Notes.AddCommand(command, exitCode, stdout, stderr)
+		return combineStdoutStderr(stdout, stderr), nil
+	}
+
 	args := []string{}
 	if command != "" {
 		args = []string{shell, "-c", command}
@@ -279,6 +377,32 @@ func (env *Environment) Run(ctx context.Context, command, shell string, useEntry
 }
 
 func (env *Environment) RunBackground(ctx context.Context, command, shell string, ports []int, useEntrypoint bool) (EndpointMappings, error) {
+	if env.IsHost() {
+		if strings.TrimSpace(command) == "" {
+			return nil, fmt.Errorf("background command is empty")
+		}
+		args := []string{shell, "-c", command}
+		displayCommand := command + " &"
+		cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+		cmd.Dir = env.State.Config.Workdir
+		cmd.Env = append([]string{}, append(execEnv(), env.State.Config.Env...)...)
+		if err := cmd.Start(); err != nil {
+			// Record failure
+			env.Notes.AddCommand(displayCommand, 1, "", err.Error())
+			return nil, err
+		}
+		// Do not wait; treat as started
+		env.Notes.AddCommand(displayCommand, 0, "", "")
+		endpoints := EndpointMappings{}
+		for _, port := range ports {
+			endpoints[port] = &EndpointMapping{
+				EnvironmentInternal: fmt.Sprintf("tcp://127.0.0.1:%d", port),
+				HostExternal:        fmt.Sprintf("tcp://127.0.0.1:%d", port),
+			}
+		}
+		return endpoints, nil
+	}
+
 	args := []string{}
 	if command != "" {
 		args = []string{shell, "-c", command}
@@ -357,6 +481,9 @@ func (env *Environment) RunBackground(ctx context.Context, command, shell string
 }
 
 func (env *Environment) Terminal(ctx context.Context) error {
+	if env.IsHost() {
+		return fmt.Errorf("interactive terminal is not supported in host mode")
+	}
 	container := env.container()
 	var cmd []string
 	var sourceRC string
@@ -390,5 +517,39 @@ func (env *Environment) Terminal(ctx context.Context) error {
 }
 
 func (env *Environment) Checkpoint(ctx context.Context, target string) (string, error) {
+	if env.IsHost() {
+		return "", fmt.Errorf("checkpoint is not supported in host mode")
+	}
 	return env.container().Publish(ctx, target)
+}
+
+// IsHost reports whether this environment runs directly on the host (no containers)
+func (env *Environment) IsHost() bool {
+	return strings.EqualFold(env.State.Config.BaseImage, "host")
+}
+
+// applyHost updates the environment timestamps without container state
+func (env *Environment) applyHost(ctx context.Context) error {
+	env.mu.Lock()
+	defer env.mu.Unlock()
+	env.State.UpdatedAt = time.Now()
+	// Mark container state as host for clarity
+	env.State.Container = "host"
+	return nil
+}
+
+// combineStdoutStderr returns stdout plus stderr tagged, similar to container path
+func combineStdoutStderr(stdout, stderr string) string {
+	if stderr == "" {
+		return stdout
+	}
+	if stdout != "" {
+		return stdout + "\n" + "stderr: " + stderr
+	}
+	return "stderr: " + stderr
+}
+
+// execEnv returns the current process environment without mutation
+func execEnv() []string {
+	return os.Environ()
 }

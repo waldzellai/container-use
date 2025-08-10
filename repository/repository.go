@@ -215,6 +215,10 @@ func (r *Repository) Create(ctx context.Context, dag *dagger.Client, description
 	if err := config.Load(r.userRepoPath); err != nil {
 		return nil, err
 	}
+	// For host mode, set workdir to the actual worktree path
+	if strings.EqualFold(config.BaseImage, "host") {
+		config.Workdir = worktree
+	}
 
 	env, err := environment.New(ctx, dag, id, description, config, baseSourceDir)
 	if err != nil {
@@ -251,6 +255,10 @@ func (r *Repository) Get(ctx context.Context, dag *dagger.Client, id string) (*e
 	env, err := environment.Load(ctx, dag, id, state, worktree)
 	if err != nil {
 		return nil, err
+	}
+	// Ensure workdir is set in host mode
+	if env.State.Config != nil && strings.EqualFold(env.State.Config.BaseImage, "host") && env.State.Config.Workdir == "" {
+		env.State.Config.Workdir = worktree
 	}
 
 	return env, nil

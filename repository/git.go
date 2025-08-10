@@ -217,6 +217,17 @@ func (r *Repository) exportEnvironment(ctx context.Context, env *environment.Env
 		return fmt.Errorf("failed to get worktree path: %w", err)
 	}
 
+	if env.IsHost() {
+		// In host mode, files are already in the worktree; ensure .git points to bare worktree
+		if err := os.MkdirAll(worktreePath, 0755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(worktreePath, ".git"), []byte(worktreePointer), 0644); err != nil {
+			return err
+		}
+		return nil
+	}
+
 	_, err = env.Workdir().
 		WithNewFile(".git", worktreePointer).
 		Export(

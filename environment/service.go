@@ -28,6 +28,10 @@ type EndpointMapping struct {
 type EndpointMappings map[int]*EndpointMapping
 
 func (env *Environment) startServices(ctx context.Context) ([]*Service, error) {
+	if env.IsHost() {
+		// No containerized services in host mode; return empty list
+		return []*Service{}, nil
+	}
 	services := []*Service{}
 	for _, cfg := range env.State.Config.Services {
 		service, err := env.startService(ctx, cfg)
@@ -40,6 +44,10 @@ func (env *Environment) startServices(ctx context.Context) ([]*Service, error) {
 }
 
 func (env *Environment) startService(ctx context.Context, cfg *ServiceConfig) (*Service, error) {
+	if env.IsHost() {
+		// Not supported in host mode
+		return &Service{Config: cfg, Endpoints: EndpointMappings{}}, nil
+	}
 	container := env.dag.Container().From(cfg.Image)
 	container, err := containerWithEnvAndSecrets(env.dag, container, cfg.Env, env.State.Config.Secrets)
 	if err != nil {
@@ -129,6 +137,10 @@ func (env *Environment) AddService(ctx context.Context, explanation string, cfg 
 	env.State.Config.Services = append(env.State.Config.Services, cfg)
 	env.Services = append(env.Services, svc)
 
+	if env.IsHost() {
+		env.Notes.Add("Add service %s\n%s\n\n", cfg.Name, explanation)
+		return svc, nil
+	}
 	state := env.container().WithServiceBinding(cfg.Name, svc.svc)
 	if err := env.apply(ctx, state); err != nil {
 		return nil, err
