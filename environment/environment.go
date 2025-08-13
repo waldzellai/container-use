@@ -59,7 +59,7 @@ func New(ctx context.Context, dag *dagger.Client, id, title string, config *Envi
 	slog.Info("Creating environment", "id", env.ID, "workdir", env.State.Config.Workdir)
 
 	if env.IsHost() {
-		if err := env.applyHost(ctx); err != nil {
+		if err := env.applyHost(); err != nil {
 			return nil, err
 		}
 		return env, nil
@@ -298,7 +298,7 @@ func (env *Environment) UpdateConfig(ctx context.Context, newConfig *Environment
 	}
 
 	if env.IsHost() {
-		if err := env.applyHost(ctx); err != nil {
+		if err := env.applyHost(); err != nil {
 			return err
 		}
 		return nil
@@ -562,7 +562,7 @@ func (env *Environment) IsHost() bool {
 }
 
 // applyHost updates the environment timestamps without container state
-func (env *Environment) applyHost(ctx context.Context) error {
+func (env *Environment) applyHost() error {
 	env.mu.Lock()
 	defer env.mu.Unlock()
 	env.State.UpdatedAt = time.Now()
@@ -582,10 +582,6 @@ func combineStdoutStderr(stdout, stderr string) string {
 	return "stderr: " + stderr
 }
 
-// execEnv returns the current process environment without mutation
-func execEnv() []string {
-	return os.Environ()
-}
 
 // buildHostEnv merges host environment with configured env vars and secrets
 func (env *Environment) buildHostEnv() []string {
