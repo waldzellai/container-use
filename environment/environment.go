@@ -577,7 +577,7 @@ func combineStdoutStderr(stdout, stderr string) string {
 		return stdout
 	}
 	if stdout != "" {
-		return stdout + "\n" + "stderr: " + stderr
+		return stdout + "\nstderr: " + stderr
 	}
 	return "stderr: " + stderr
 }
